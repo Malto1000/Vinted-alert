@@ -57,13 +57,12 @@ def send_telegram(item):
     title = item.get("title", "Sans titre")
     price = item.get("price", "?")
     url = f"https://www.vinted.fr/items/{item['id']}"
-    msg = f"🔥 *{title}*\n💶 {price}€\n🔗 {url}"
+    msg = f"🔥 {title}\n💶 {price}€\n🔗 {url}"
     r = requests.post(
         f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-        json={"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"}
+        json={"chat_id": CHAT_ID, "text": msg}
     )
-    print(f"Telegram status: {r.status_code} - {r.text}")
-
+    print(f"Telegram status: {r.status_code}")
 
 def main():
     seen = load_seen()
