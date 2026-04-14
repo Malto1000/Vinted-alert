@@ -6,9 +6,16 @@ TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
 
 SEARCHES = [
-    {"query": "iphone 13", "max_price": 300},
-    {"query": "nike tn", "max_price": 60},
-    {"query": "airpods", "max_price": 50},
+    {"query": "ralph lauren", "min_price": 3, "max_price": 25},
+    {"query": "lacoste", "min_price": 3, "max_price": 25},
+    {"query": "the north face", "min_price": 3, "max_price": 25},
+    {"query": "tommy hilfiger", "min_price": 3, "max_price": 25},
+    {"query": "carhartt", "min_price": 3, "max_price": 25},
+]
+
+MOTS_SUSPECTS = [
+    "boite", "box", "vide", "coque", "housse", "sans", "accessoire",
+    "lot", "étiquette", "tag", "logo", "patch", "badge", "flocage"
 ]
 
 SEEN_FILE = "seen.json"
@@ -23,7 +30,27 @@ def save_seen(seen):
     with open(SEEN_FILE, "w") as f:
         json.dump(list(seen), f)
 
-def get_vinted_token():
+def is_suspect(item):
+    title = item.get("title", "").lower()
+    price = float(item.get("price", 0))
+    photos = item.get("photos", [])
+    
+    # Filtre mots suspects
+    for mot in MOTS_SUSPECTS:
+        if mot in title:
+            return True
+    
+    # Filtre prix trop bas
+    if price < 3:
+        return True
+    
+    # Filtre pas assez de photos
+    if len(photos) < 2:
+        return True
+    
+    return False
+
+def get_session():
     session = requests.Session()
     session.get("https://www.vinted.fr", headers={
         "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15",
@@ -31,10 +58,11 @@ def get_vinted_token():
     })
     return session
 
-def search_vinted(session, query, max_price):
-    url = f"https://www.vinted.fr/api/v2/catalog/items"
+def search_vinted(session, query, min_price, max_price):
+    url = "https://www.vinted.fr/api/v2/catalog/items"
     params = {
         "search_text": query,
+        "price_from": min_price,
         "price_to": max_price,
         "order": "newest_first",
         "per_page": 20,
@@ -57,7 +85,8 @@ def send_telegram(item):
     title = item.get("title", "Sans titre")
     price = item.get("price", "?")
     url = f"https://www.vinted.fr/items/{item['id']}"
-    msg = f"🔥 {title}\n💶 {price}€\n🔗 {url}"
+    nb_photos = len(item.get("photos", []))
+    msg = f"🔥 {title}\n💶 {price}€\n📸 {nb_photos} photos\n🔗 {url}"
     r = requests.post(
         f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
         json={"chat_id": CHAT_ID, "text": msg}
@@ -67,15 +96,15 @@ def send_telegram(item):
 def main():
     seen = load_seen()
     new_seen = set()
-    session = get_vinted_token()
+    session = get_session()
 
     for search in SEARCHES:
-        items = search_vinted(session, search["query"], search["max_price"])
+        items = search_vinted(session, search["query"], search["min_price"], search["max_price"])
         print(f"{search['query']}: {len(items)} articles trouvés")
         for item in items:
             item_id = str(item["id"])
             new_seen.add(item_id)
-            if item_id not in seen:
+            if item_id not in seen and not is_suspect(item):
                 send_telegram(item)
 
     save_seen(seen | new_seen)
