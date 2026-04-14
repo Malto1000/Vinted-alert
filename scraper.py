@@ -32,7 +32,9 @@ def save_seen(seen):
 
 def is_suspect(item):
     title = item.get("title", "").lower()
-    price = float(item.get("price", 0))
+    price_raw = item.get("price", 0)
+    price = float(price_raw["amount"]) if isinstance(price_raw, dict) else float(price_raw)
+
     photos = item.get("photos", [])
     
     # Filtre mots suspects
