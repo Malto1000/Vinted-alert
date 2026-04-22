@@ -38,10 +38,10 @@ def load_users():
             continue
         marques = [m.strip() for m in marques_raw.split(",")]
         users.append({
-            "prenom": row.get("Prenom (pas d'espaces ni de caracteres speciaux)", "").strip(),
-            "chat_id": chat_id,
-            "marques": marques,
-            "prix_max": float(prix_max) if prix_max else 25,
+        chat_id = row.get("chat id", "").strip()
+        marques_raw = row.get("Marques", "")
+        prix_max = row.get("Prix Maximum (reponse en nombres uniquement)", "25").strip()
+        prenom = row.get("Prenom (pas d'espaces ni de caracteres speciaux)", "").strip()
         })
     print(f"{len(users)} utilisateurs chargés")
     return users
