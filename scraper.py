@@ -1,21 +1,16 @@
 import requests
 import json
 import os
+import csv
+import io
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
-CHAT_ID = os.environ["CHAT_ID"]
 
-SEARCHES = [
-    {"query": "ralph lauren", "min_price": 3, "max_price": 25},
-    {"query": "lacoste", "min_price": 3, "max_price": 25},
-    {"query": "the north face", "min_price": 3, "max_price": 25},
-    {"query": "tommy hilfiger", "min_price": 3, "max_price": 25},
-    {"query": "carhartt", "min_price": 3, "max_price": 25},
-]
+SHEET_ID = "1NIwcVEZrc79fbj5LXIJ76C4wKPc7_mbegYy5bkAWHbE"
 
 MOTS_SUSPECTS = [
     "boite", "box", "vide", "coque", "housse", "sans", "accessoire",
-    "lot", "étiquette", "tag", "logo", "patch", "badge", "flocage"
+    "lot", "etiquette", "tag", "logo", "patch", "badge", "flocage"
 ]
 
 SEEN_FILE = "seen.json"
@@ -30,26 +25,42 @@ def save_seen(seen):
     with open(SEEN_FILE, "w") as f:
         json.dump(list(seen), f)
 
+def load_users():
+    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
+    r = requests.get(url, timeout=10)
+    users = []
+    reader = csv.DictReader(io.StringIO(r.text))
+    for row in reader:
+        chat_id = row.get("chat_id", "").strip()
+        marques_raw = row.get("Marques", "")
+        prix_max = row.get("Prix Maximum (reponse en nombres uniquement)", "25").strip()
+        if not chat_id:
+            continue
+        marques = [m.strip() for m in marques_raw.split(",")]
+        users.append({
+            "prenom": row.get("Prenom (pas d'espaces ni de caracteres speciaux)", "").strip(),
+            "chat_id": chat_id,
+            "marques": marques,
+            "prix_max": float(prix_max) if prix_max else 25,
+        })
+    print(f"{len(users)} utilisateurs chargés")
+    return users
+
 def is_suspect(item):
     title = item.get("title", "").lower()
-    price_raw = item.get("price", 0)
-    price = float(price_raw["amount"]) if isinstance(price_raw, dict) else float(price_raw)
-
     photos = item.get("photos", [])
-    
-    # Filtre mots suspects
+    price_raw = item.get("price", 0)
+    if isinstance(price_raw, dict):
+        price = float(price_raw.get("amount", 0))
+    else:
+        price = float(price_raw)
     for mot in MOTS_SUSPECTS:
         if mot in title:
             return True
-    
-    # Filtre prix trop bas
     if price < 3:
         return True
-    
-    # Filtre pas assez de photos
     if len(photos) < 2:
         return True
-    
     return False
 
 def get_session():
@@ -60,12 +71,12 @@ def get_session():
     })
     return session
 
-def search_vinted(session, query, min_price, max_price):
+def search_vinted(session, query, prix_max):
     url = "https://www.vinted.fr/api/v2/catalog/items"
     params = {
         "search_text": query,
-        "price_from": min_price,
-        "price_to": max_price,
+        "price_from": 3,
+        "price_to": prix_max,
         "order": "newest_first",
         "per_page": 20,
     }
@@ -76,38 +87,45 @@ def search_vinted(session, query, min_price, max_price):
     }
     try:
         r = session.get(url, params=params, headers=headers, timeout=15)
-        print(f"Status {query}: {r.status_code}")
         data = r.json()
         return data.get("items", [])
     except Exception as e:
         print(f"Erreur: {e}")
         return []
 
-def send_telegram(item):
+def send_telegram(chat_id, item):
     title = item.get("title", "Sans titre")
-    price = item.get("price", "?")
+    price_raw = item.get("price", "?")
+    if isinstance(price_raw, dict):
+        price = price_raw.get("amount", "?")
+    else:
+        price = price_raw
     url = f"https://www.vinted.fr/items/{item['id']}"
     nb_photos = len(item.get("photos", []))
     msg = f"🔥 {title}\n💶 {price}€\n📸 {nb_photos} photos\n🔗 {url}"
     r = requests.post(
         f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-        json={"chat_id": CHAT_ID, "text": msg}
+        json={"chat_id": chat_id, "text": msg}
     )
-    print(f"Telegram status: {r.status_code}")
+    print(f"Telegram {chat_id}: {r.status_code}")
 
 def main():
     seen = load_seen()
     new_seen = set()
     session = get_session()
+    users = load_users()
 
-    for search in SEARCHES:
-        items = search_vinted(session, search["query"], search["min_price"], search["max_price"])
-        print(f"{search['query']}: {len(items)} articles trouvés")
-        for item in items:
-            item_id = str(item["id"])
-            new_seen.add(item_id)
-            if item_id not in seen and not is_suspect(item):
-                send_telegram(item)
+    for user in users:
+        print(f"Recherche pour {user['prenom']}...")
+        for marque in user["marques"]:
+            items = search_vinted(session, marque, user["prix_max"])
+            print(f"  {marque}: {len(items)} articles")
+            for item in items:
+                item_id = str(item["id"])
+                new_seen.add(item_id)
+                user_key = f"{item_id}_{user['chat_id']}"
+                if user_key not in seen and not is_suspect(item):
+                    send_telegram(user["chat_id"], item)
 
     save_seen(seen | new_seen)
 
