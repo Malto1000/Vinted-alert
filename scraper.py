@@ -31,17 +31,18 @@ def load_users():
     users = []
     reader = csv.DictReader(io.StringIO(r.text))
     for row in reader:
-        chat_id = row.get("chat_id", "").strip()
-        marques_raw = row.get("Marques", "")
-        prix_max = row.get("Prix Maximum (reponse en nombres uniquement)", "25").strip()
-        if not chat_id:
-            continue
-        marques = [m.strip() for m in marques_raw.split(",")]
-        users.append({
         chat_id = row.get("chat id", "").strip()
         marques_raw = row.get("Marques", "")
         prix_max = row.get("Prix Maximum (reponse en nombres uniquement)", "25").strip()
         prenom = row.get("Prenom (pas d'espaces ni de caracteres speciaux)", "").strip()
+        if not chat_id:
+            continue
+        marques = [m.strip() for m in marques_raw.split(",")]
+        users.append({
+            "prenom": prenom,
+            "chat_id": chat_id,
+            "marques": marques,
+            "prix_max": float(prix_max) if prix_max else 25,
         })
     print(f"{len(users)} utilisateurs chargés")
     return users
