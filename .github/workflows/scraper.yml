@@ -3,17 +3,18 @@ name: Vinted Scraper
 on:
   schedule:
     - cron: '0 * * * *'
-
   workflow_dispatch:
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
@@ -23,7 +24,6 @@ jobs:
       - name: Run scraper
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID }}
         run: python scraper.py
 
       - name: Save seen.json
@@ -33,4 +33,3 @@ jobs:
           git add seen.json
           git diff --staged --quiet || git commit -m "Update seen.json"
           git pull --rebase && git push
-
